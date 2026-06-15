@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
+                   package="com.oms.sbe"
+                   id="1"
+                   version="1"
+                   semanticVersion="1.0"
+                   description="OMS Commands and Events">
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- SHARED TYPES                                -->
+    <!-- ═══════════════════════════════════════════ -->
+
+    <types>
+        <type name="sequenceNumber"  primitiveType="int64"/>
+        <type name="timestamp"       primitiveType="int64"/>  <!-- epoch micros -->
+        <type name="orderId"         primitiveType="int64"/>
+        <type name="clientId"        primitiveType="int64"/>
+        <type name="accountId"       primitiveType="int64"/>
+        <type name="price"           primitiveType="int64"/>  <!-- price × 10^8 fixed point -->
+        <type name="quantity"        primitiveType="int64"/>  <!-- quantity × 10^8 fixed point -->
+        <type name="correlationId"   primitiveType="int64"/>
+
+        <!-- Fixed-length char arrays for FIX string fields -->
+        <type name="text"         primitiveType="char" length="100" characterEncoding="US-ASCII"/>
+        <type name="symbol"       primitiveType="char" length="20"  characterEncoding="US-ASCII"/>
+
+        <composite name="Decimal64" description="Signed decimal: value = mantissa × 10^exponent">
+            <type name="mantissa"   primitiveType="int64"/>
+            <type name="exponent"   primitiveType="int8"/>
+        </composite>
+
+        <enum name="SideEnum" encodingType="uint8">
+            <validValue name="BUY">0</validValue>
+            <validValue name="SELL">1</validValue>
+        </enum>
+
+        <enum name="OrdTypeEnum" encodingType="uint8">
+            <validValue name="LIMIT">0</validValue>
+            <validValue name="MARKET">1</validValue>
+        </enum>
+
+        <enum name="TimeInForceEnum" encodingType="uint8">
+            <validValue name="DAY">0</validValue>
+            <validValue name="GTC">1</validValue>
+            <validValue name="IOC">2</validValue>
+            <validValue name="FOK">3</validValue>
+        </enum>
+
+        <enum name="RejectReasonEnum" encodingType="uint8">
+            <validValue name="INVALID_PRICE">0</validValue>
+            <validValue name="INVALID_QUANTITY">1</validValue>
+            <validValue name="UNKNOWN_INSTRUMENT">2</validValue>
+            <validValue name="UNKNOWN_ACCOUNT">3</validValue>
+            <validValue name="RISK_BREACH">4</validValue>
+            <validValue name="DUPLICATE_ORDER">5</validValue>
+        </enum>
+
+        <enum name="CancelReasonEnum" encodingType="uint8">
+            <validValue name="CLIENT_REQUEST">0</validValue>
+            <validValue name="RISK_BREACH">1</validValue>
+            <validValue name="EXPIRED">2</validValue>
+        </enum>
+
+        <composite name="messageHeader"
+                   description="Standard SBE message header">
+            <type name="blockLength"  primitiveType="uint16"/>
+            <type name="templateId"   primitiveType="uint16"/>
+            <type name="schemaId"     primitiveType="uint16"/>
+            <type name="version"      primitiveType="uint16"/>
+        </composite>
+
+        <type name="instrument" primitiveType="char" length="12"
+              characterEncoding="US-ASCII"/>
+    </types>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- COMMANDS  (templateId 1–99)                 -->
+    <!-- ═══════════════════════════════════════════ -->
+
+    <sbe:message name="NewOrderCommand" id="1"
+                 description="Client submits a new order">
+        <field name="sequenceNumber"  id="1"   type="sequenceNumber"/>
+        <field name="correlationId"   id="2"   type="correlationId"/>
+        <field name="clientId"        id="3"   type="clientId"/>
+        <field name="orderId"         id="4"   type="orderId"/>
+        <field name="accountId"       id="5"   type="accountId"/>
+        <field name="side"            id="6"   type="SideEnum"/>
+        <field name="orderQty"        id="7"   type="Decimal64"/>
+        <field name="symbol"          id="8"   type="symbol"/>
+        <field name="ordType"         id="9"   type="OrdTypeEnum"/>
+        <field name="price"           id="10"  type="Decimal64"/>
+        <field name="timeInForce"     id="11"  type="TimeInForceEnum"/>
+        <field name="text"            id="12"  type="text"/>
+        <field name="timestamp"       id="13"  type="timestamp"/>
+    </sbe:message>
+
+    <sbe:message name="CancelOrderCommand" id="2"
+                 description="Client requests cancellation of an open order">
+        <field name="sequenceNumber"  id="1"  type="sequenceNumber"/>
+        <field name="timestamp"       id="2"  type="timestamp"/>
+        <field name="correlationId"   id="3"  type="correlationId"/>
+        <field name="orderId"         id="4"  type="orderId"/>
+        <field name="accountId"       id="5"  type="accountId"/>
+        <field name="cancelReason"    id="6"  type="CancelReasonEnum"/>
+    </sbe:message>
+
+    <sbe:message name="AmendOrderCommand" id="3"
+                 description="Client amends price or quantity of an open order">
+        <field name="sequenceNumber"  id="1"  type="sequenceNumber"/>
+        <field name="timestamp"       id="2"  type="timestamp"/>
+        <field name="correlationId"   id="3"  type="correlationId"/>
+        <field name="orderId"         id="4"  type="orderId"/>
+        <field name="accountId"       id="5"  type="accountId"/>
+        <field name="newPrice"        id="6"  type="price"/>
+        <field name="newQuantity"     id="7"  type="quantity"/>
+    </sbe:message>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- EVENTS  (templateId 100–199)               -->
+    <!-- ═══════════════════════════════════════════ -->
+
+    <sbe:message name="NewOrderReceivedEvent" id="100"
+                 description="New order has been received">
+        <field name="sequenceNumber"  id="1"   type="sequenceNumber"/>
+        <field name="correlationId"   id="2"   type="correlationId"/>
+        <field name="clientId"        id="3"   type="clientId"/>
+        <field name="orderId"         id="4"   type="orderId"/>
+        <field name="accountId"       id="5"   type="accountId"/>
+        <field name="side"            id="6"   type="SideEnum"/>
+        <field name="orderQty"        id="7"   type="Decimal64"/>
+        <field name="symbol"          id="8"   type="symbol"/>
+        <field name="ordType"         id="9"   type="OrdTypeEnum"/>
+        <field name="price"           id="10"  type="Decimal64"/>
+        <field name="timeInForce"     id="11"  type="TimeInForceEnum"/>
+        <field name="text"            id="12"  type="text"/>
+        <field name="timestamp"       id="13"  type="timestamp"/>
+    </sbe:message>
+
+    <sbe:message name="OrderAcceptedEvent" id="101"
+                 description="Order passed validation and is now open">
+        <field name="sequenceNumber"  id="1"  type="sequenceNumber"/>
+        <field name="timestamp"       id="2"  type="timestamp"/>
+        <field name="correlationId"   id="3"  type="correlationId"/>
+        <field name="orderId"         id="4"  type="orderId"/>
+        <field name="accountId"       id="5"  type="accountId"/>
+        <field name="instrument"      id="6"  type="instrument"/>
+        <field name="side"            id="7"  type="SideEnum"/>
+        <field name="orderType"       id="8"  type="OrdTypeEnum"/>
+        <field name="timeInForce"     id="9"  type="TimeInForceEnum"/>
+        <field name="price"           id="10" type="Decimal64"/>
+        <field name="quantity"        id="11" type="Decimal64"/>
+    </sbe:message>
+
+    <sbe:message name="OrderRejectedEvent" id="102"
+                 description="Order failed validation or risk check">
+        <field name="sequenceNumber"  id="1"  type="sequenceNumber"/>
+        <field name="timestamp"       id="2"  type="timestamp"/>
+        <field name="correlationId"   id="3"  type="correlationId"/>
+        <field name="orderId"         id="4"  type="orderId"/>
+        <field name="accountId"       id="5"  type="accountId"/>
+        <field name="rejectReason"    id="6"  type="RejectReasonEnum"/>
+    </sbe:message>
+
+    <sbe:message name="OrderCancelledEvent" id="103"
+                 description="Order successfully cancelled">
+        <field name="sequenceNumber"  id="1"  type="sequenceNumber"/>
+        <field name="timestamp"       id="2"  type="timestamp"/>
+        <field name="correlationId"   id="3"  type="correlationId"/>
+        <field name="orderId"         id="4"  type="orderId"/>
+        <field name="accountId"       id="5"  type="accountId"/>
+        <field name="cancelReason"    id="6"  type="CancelReasonEnum"/>
+    </sbe:message>
+
+    <sbe:message name="OrderAmendedEvent" id="104"
+                 description="Order price or quantity successfully amended">
+        <field name="sequenceNumber"  id="1"  type="sequenceNumber"/>
+        <field name="timestamp"       id="2"  type="timestamp"/>
+        <field name="correlationId"   id="3"  type="correlationId"/>
+        <field name="orderId"         id="4"  type="orderId"/>
+        <field name="accountId"       id="5"  type="accountId"/>
+        <field name="newPrice"        id="6"  type="price"/>
+        <field name="newQuantity"     id="7"  type="quantity"/>
+    </sbe:message>
+
+    <sbe:message name="OrderFilledEvent" id="105"
+                 description="Order fully filled">
+        <field name="sequenceNumber"  id="1"  type="sequenceNumber"/>
+        <field name="timestamp"       id="2"  type="timestamp"/>
+        <field name="correlationId"   id="3"  type="correlationId"/>
+        <field name="orderId"         id="4"  type="orderId"/>
+        <field name="accountId"       id="5"  type="accountId"/>
+        <field name="fillPrice"       id="6"  type="price"/>
+        <field name="fillQuantity"    id="7"  type="quantity"/>
+    </sbe:message>
+
+    <sbe:message name="OrderPartiallyFilledEvent" id="106"
+                 description="Order partially filled, remainder open">
+        <field name="sequenceNumber"  id="1"  type="sequenceNumber"/>
+        <field name="timestamp"       id="2"  type="timestamp"/>
+        <field name="correlationId"   id="3"  type="correlationId"/>
+        <field name="orderId"         id="4"  type="orderId"/>
+        <field name="accountId"       id="5"  type="accountId"/>
+        <field name="fillPrice"       id="6"  type="price"/>
+        <field name="fillQuantity"    id="7"  type="quantity"/>
+        <field name="remainingQty"    id="8"  type="quantity"/>
+    </sbe:message>
+
+    <sbe:message name="CancelRejectedEvent" id="107"
+                 description="Cancel request rejected (e.g. order already filled)">
+        <field name="sequenceNumber"  id="1"  type="sequenceNumber"/>
+        <field name="timestamp"       id="2"  type="timestamp"/>
+        <field name="correlationId"   id="3"  type="correlationId"/>
+        <field name="orderId"         id="4"  type="orderId"/>
+        <field name="rejectReason"    id="5"  type="RejectReasonEnum"/>
+    </sbe:message>
+
+</sbe:messageSchema>

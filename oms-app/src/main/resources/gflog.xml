@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="gflog.xsd">
+
+    <appender name="console"
+              factory="com.epam.deltix.gflog.core.appender.ConsoleAppenderFactory">
+        <!-- GFLogger template tokens: %d date, %p level, %t thread, %c logger, %m message -->
+        <layout template="%d{HH:mm:ss.SSS} %p [%t] %c{1} - %m%n"/>
+    </appender>
+
+    <!-- Root logger at DEBUG so sequencer stamping output is visible -->
+    <logger level="DEBUG">
+        <appender-ref ref="console"/>
+    </logger>
+
+</config>

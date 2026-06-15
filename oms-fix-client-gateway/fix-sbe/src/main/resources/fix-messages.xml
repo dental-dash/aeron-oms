@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
+                   package="com.oms.fix.sbe"
+                   id="2"
+                   version="1"
+                   semanticVersion="1.0"
+                   description="FIX Integration Commands and Events">
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- SHARED TYPES                                -->
+    <!-- ═══════════════════════════════════════════ -->
+
+    <types>
+        <!-- SBE tooling requires a composite named exactly "messageHeader" -->
+        <composite name="messageHeader"
+                   description="Standard SBE message header">
+            <type name="blockLength"  primitiveType="uint16"/>
+            <type name="templateId"   primitiveType="uint16"/>
+            <type name="schemaId"     primitiveType="uint16"/>
+            <type name="version"      primitiveType="uint16"/>
+        </composite>
+
+        <!--
+            Decimal64: price/qty as mantissa × 10^exponent.
+            FIX values arrive as strings; convert to mantissa=value×10^8, exponent=-8
+            to keep parity with the fixed-point convention used in oms-sbe.
+        -->
+        <composite name="Decimal64" description="Signed decimal: value = mantissa × 10^exponent">
+            <type name="mantissa"  primitiveType="int64"/>
+            <type name="exponent"  primitiveType="int8"/>
+        </composite>
+
+        <!-- Fixed-length char arrays for FIX string fields -->
+        <type name="clOrdId"      primitiveType="char" length="36"  characterEncoding="US-ASCII"/>
+        <type name="symbol"       primitiveType="char" length="20"  characterEncoding="US-ASCII"/>
+        <type name="account"      primitiveType="char" length="20"  characterEncoding="US-ASCII"/>
+        <type name="text"         primitiveType="char" length="100" characterEncoding="US-ASCII"/>
+
+        <type name="sequenceNumber" primitiveType="int64"/>
+        <type name="sessionId"      primitiveType="int64"/>
+        <type name="orderId"        primitiveType="int64"/>
+        <type name="time"   primitiveType="int64"/> <!-- epoch micros -->
+
+        <enum name="SideEnum" encodingType="uint8">
+            <validValue name="BUY">0</validValue>
+            <validValue name="SELL">1</validValue>
+        </enum>
+
+        <enum name="OrdTypeEnum" encodingType="uint8">
+            <validValue name="LIMIT">0</validValue>
+            <validValue name="MARKET">1</validValue>
+        </enum>
+
+        <enum name="TimeInForceEnum" encodingType="uint8">
+            <validValue name="DAY">0</validValue>
+            <validValue name="GTC">1</validValue>
+            <validValue name="IOC">2</validValue>
+            <validValue name="FOK">3</validValue>
+        </enum>
+    </types>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- FIX-LEVEL COMMANDS  (templateId 10–19)                             -->
+    <!-- Consumed only by FixOrderAggregateAgent (anti-corruption layer).   -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+    <!-- sequenceNumber is field id=1 at offset 0 after the header, keeping the
+         sequencer offset invariant: seqNo at byte MessageHeaderDecoder.ENCODED_LENGTH (=8). -->
+
+    <sbe:message name="FixNewOrderSingleCommand" id="10"
+                 description="FIX NewOrderSingle (D) translated into internal binary form">
+        <field name="sequenceNumber"   id="1"    type="sequenceNumber"/>
+        <field name="sessionId"        id="2"    type="sessionId"/>
+        <field name="clOrdId"          id="3"    type="clOrdId"/>
+        <field name="onBehalfOfCompId" id="4"    type="text"/>
+        <field name="account"          id="5"    type="account"/>
+        <field name="side"             id="6"    type="SideEnum"/>
+        <field name="orderQty"         id="7"    type="Decimal64"/>
+        <field name="symbol"           id="8"    type="symbol"/>
+        <field name="ordType"          id="9"    type="OrdTypeEnum"/>
+        <field name="price"            id="10"   type="Decimal64"/>
+        <field name="timeInForce"      id="11"   type="TimeInForceEnum"/>
+        <field name="text"             id="12"   type="text"/>
+        <field name="transactTime"     id="13"   type="time"/>
+    </sbe:message>
+
+    <sbe:message name="FixOrderCancelRequestCommand" id="11"
+                 description="FIX OrderCancelRequest (F) translated into internal binary form">
+        <field name="sequenceNumber" id="1"  type="sequenceNumber"/>
+        <field name="sessionId"      id="2"  type="sessionId"/>
+        <field name="clOrdId"        id="3"  type="clOrdId"/>
+        <field name="origClOrdId"    id="4"  type="clOrdId"/>
+        <field name="symbol"         id="5"  type="symbol"/>
+        <field name="side"           id="6"  type="SideEnum"/>
+        <field name="transactTime"   id="7"  type="time"/>
+    </sbe:message>
+
+    <sbe:message name="FixOrderCancelReplaceRequestCommand" id="12"
+                 description="FIX OrderCancelReplaceRequest (G) translated into internal binary form">
+        <field name="sequenceNumber" id="1"  type="sequenceNumber"/>
+        <field name="sessionId"      id="2"  type="sessionId"/>
+        <field name="clOrdId"        id="3"  type="clOrdId"/>
+        <field name="origClOrdId"    id="4"  type="clOrdId"/>
+        <field name="side"           id="6"  type="SideEnum"/>
+        <field name="orderQty"       id="9"  type="Decimal64"/>
+        <field name="symbol"         id="5"  type="symbol"/>
+        <field name="ordType"        id="7"  type="OrdTypeEnum"/>
+        <field name="price"          id="8"  type="Decimal64"/>
+        <field name="transactTime"   id="10" type="time"/>
+    </sbe:message>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- INTERNAL DOMAIN COMMANDS  (templateId 20–29)                       -->
+    <!-- Emitted by FixOrderAggregateAgent; consumed by OrderAggregate.     -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- INTERNAL DOMAIN EVENTS  (templateId 30–39)                         -->
+    <!-- Emitted by OrderAggregate; consumed by event subscribers           -->
+    <!-- and by FixOrderAggregateAgent to produce FIX Execution Reports.    -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+    <sbe:message name="FixNewOrderSingleReceivedEvent" id="30"
+                 description="Domain event: order successfully placed">
+        <field name="sequenceNumber"   id="1"   type="sequenceNumber"/>
+        <field name="sessionId"        id="2"    type="sessionId"/>
+        <field name="clOrdId"          id="3"   type="clOrdId"/>
+        <field name="orderId"          id="4"   type="orderId"/>
+        <field name="onBehalfOfCompId" id="5"   type="text"/>
+        <field name="account"          id="6"   type="account"/>
+        <field name="side"             id="7"   type="SideEnum"/>
+        <field name="orderQty"         id="8"   type="Decimal64"/>
+        <field name="symbol"           id="9"   type="symbol"/>
+        <field name="ordType"          id="10"   type="OrdTypeEnum"/>
+        <field name="price"            id="11"  type="Decimal64"/>
+        <field name="timeInForce"      id="12"  type="TimeInForceEnum"/>
+        <field name="text"             id="13"  type="text"/>
+    </sbe:message>
+
+    <sbe:message name="OrderRejectedEvent" id="31"
+                 description="Domain event: order rejected by aggregate or risk">
+        <field name="sequenceNumber" id="1"  type="sequenceNumber"/>
+        <field name="orderId"        id="2"  type="orderId"/>
+        <field name="rejectText"     id="3"  type="text"/>
+    </sbe:message>
+
+</sbe:messageSchema>

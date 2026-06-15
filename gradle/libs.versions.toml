@@ -1,0 +1,24 @@
+[versions]
+aeron       = "1.44.1"
+agrona      = "1.21.1"
+artio       = "0.153"
+sbe         = "1.30.0"
+gflog       = "3.0.7"
+dfp         = "1.0.10"
+java        = "21"
+undertow    = "2.3.18.Final"
+jackson     = "2.17.2"
+
+[libraries]
+aeron-driver     = { module = "io.aeron:aeron-driver",                   version.ref = "aeron"    }
+aeron-client     = { module = "io.aeron:aeron-client",                   version.ref = "aeron"    }
+aeron-archive    = { module = "io.aeron:aeron-archive",                  version.ref = "aeron"    }
+agrona           = { module = "org.agrona:agrona",                       version.ref = "agrona"   }
+sbe-tool         = { module = "uk.co.real-logic:sbe-tool",               version.ref = "sbe"      }
+gflog-api        = { module = "com.epam.deltix:gflog-api",               version.ref = "gflog"    }
+gflog-core       = { module = "com.epam.deltix:gflog-core",              version.ref = "gflog"    }
+dfp              = { module = "com.epam.deltix:dfp",                     version.ref = "dfp"      }
+undertow-core        = { module = "io.undertow:undertow-core",                     version.ref = "undertow" }
+jackson-databind     = { module = "com.fasterxml.jackson.core:jackson-databind",   version.ref = "jackson"  }
+artio-core           = { module = "uk.co.real-logic:artio-core",                   version.ref = "artio"    }
+artio-session-codecs = { module = "uk.co.real-logic:artio-session-codecs",         version.ref = "artio"    }
