@@ -1,4 +1,4 @@
-rootProject.name = "oms-poc"
+rootProject.name = "aeron-oms"
 
 include(
     "oms-sbe",
