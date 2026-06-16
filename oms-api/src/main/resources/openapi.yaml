@@ -1,156 +1,34 @@
 openapi: "3.0.3"
 info:
-  title: Aeron OMS POC API
+  title: Aeron OMS — Query API
   description: |
-    Order Management System built on Aeron IPC + SBE.
+    Read-only query interface served by `OrderQueryServer` on port 8081.
 
-    **Two server ports:**
-    - Port **8080** — Ingress (commands: new, cancel, amend orders)
-    - Port **8081** — Query (REST snapshots + WebSocket live push)
+    **Price & Quantity:** stored internally as fixed-point × 10^8; returned as doubles (e.g. `150.25`).
 
-    **Price & Quantity encoding:** REST inputs are plain decimals (e.g. `150.25`).
-    Internally stored as fixed-point × 10^8. The query API returns doubles.
-
-    **WebSocket:** Connect to `ws://localhost:8081/ws/orders`.
-    On connect you receive a JSON array snapshot of all current orders.
-    After each order state change, you receive a single `OrderDto` JSON object.
-    Messages from the client are silently ignored (read-only in this POC).
-  version: "5.0.0"
+    **WebSocket:** `ws://localhost:8081/ws/orders`
+    - On connect: full snapshot as a JSON array of `OrderDto`
+    - On each state change: single `OrderDto` pushed to all connected clients
+    - Client messages are silently ignored (read-only)
+  version: "1.0.0"
 
 servers:
-  - url: http://localhost:8080
-    description: Ingress — command API (new/cancel/amend orders)
   - url: http://localhost:8081
-    description: Query — REST snapshots and Swagger UI
+    description: Query server (REST snapshots + WebSocket live push)
 
 tags:
-  - name: commands
-    description: Order lifecycle commands (port 8080)
-  - name: query
-    description: Order state queries (port 8081)
-
-x-websocket-api:
-  url: ws://localhost:8081/ws/orders
-  description: |
-    Connect to receive real-time order updates.
-    - On connect: full snapshot as JSON array of OrderDto
-    - On each update: single OrderDto JSON object
-    - Client messages: ignored (read-only POC)
+  - name: orders
+    description: Order state queries
 
 paths:
-  # ── Command API (port 8080) ───────────────────────────────────────────────
   /orders:
-    post:
-      tags: [commands]
-      summary: Submit a new order
-      operationId: newOrder
-      servers:
-        - url: http://localhost:8080
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/NewOrderRequest'
-            example:
-              orderId: 1001
-              accountId: 42
-              instrument: "AAPL"
-              side: "BUY"
-              orderType: "LIMIT"
-              timeInForce: "DAY"
-              price: 150.00
-              quantity: 100.0
-      responses:
-        '200':
-          description: Command accepted (async — check query API for status)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CorrelationResponse'
-        '400':
-          description: Malformed request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-    delete:
-      tags: [commands]
-      summary: Cancel an existing order
-      operationId: cancelOrder
-      servers:
-        - url: http://localhost:8080
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CancelOrderRequest'
-            example:
-              orderId: 1001
-              accountId: 42
-              reason: "CLIENT_REQUEST"
-      responses:
-        '200':
-          description: Cancel command accepted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CorrelationResponse'
-        '400':
-          description: Malformed request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-    patch:
-      tags: [commands]
-      summary: Amend price and/or quantity of an open order
-      operationId: amendOrder
-      servers:
-        - url: http://localhost:8080
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AmendOrderRequest'
-            example:
-              orderId: 1001
-              accountId: 42
-              newPrice: 152.50
-              newQuantity: 80.0
-      responses:
-        '200':
-          description: Amend command accepted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CorrelationResponse'
-        '400':
-          description: Malformed request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  # ── Query API (port 8081) ─────────────────────────────────────────────────
-  /orders-query:
     get:
-      tags: [query]
+      tags: [orders]
       summary: Get all orders (snapshot)
       operationId: getAllOrders
-      servers:
-        - url: http://localhost:8081
-      x-path: /orders
-      description: |
-        Returns a JSON array of all orders in the ViewServerReadModel.
-        Call path `/orders` on port 8081.
       responses:
         '200':
-          description: Array of all orders
+          description: Array of all orders currently held in the ViewServerReadModel
           content:
             application/json:
               schema:
@@ -158,16 +36,11 @@ paths:
                 items:
                   $ref: '#/components/schemas/OrderDto'
 
-  /orders-query-single:
+  /orders/{orderId}:
     get:
-      tags: [query]
+      tags: [orders]
       summary: Get a single order by ID
       operationId: getOrder
-      servers:
-        - url: http://localhost:8081
-      x-path: /orders/{orderId}
-      description: |
-        Returns the order matching `orderId`. Call path `/orders/{orderId}` on port 8081.
       parameters:
         - name: orderId
           in: path
@@ -189,17 +62,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: orderId is not a valid integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  /accounts-orders:
+  /accounts/{accountId}/orders:
     get:
-      tags: [query]
+      tags: [orders]
       summary: Get all orders for an account
       operationId: getAccountOrders
-      servers:
-        - url: http://localhost:8081
-      x-path: /accounts/{accountId}/orders
-      description: |
-        Returns orders filtered by `accountId`. Call path `/accounts/{accountId}/orders` on port 8081.
       parameters:
         - name: accountId
           in: path
@@ -210,90 +84,34 @@ paths:
           example: 42
       responses:
         '200':
-          description: Array of orders for the account
+          description: Orders filtered by accountId (empty array if none)
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/OrderDto'
+        '400':
+          description: accountId is not a valid integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   schemas:
-    NewOrderRequest:
-      type: object
-      required: [orderId, accountId, instrument, side, orderType, timeInForce, price, quantity]
-      properties:
-        orderId:
-          type: integer
-          format: int64
-          description: Client-assigned unique order ID
-        accountId:
-          type: integer
-          format: int64
-        instrument:
-          type: string
-          maxLength: 12
-          example: "AAPL"
-        side:
-          type: string
-          enum: [BUY, SELL]
-        orderType:
-          type: string
-          enum: [LIMIT, MARKET]
-        timeInForce:
-          type: string
-          enum: [DAY, GTC, IOC, FOK]
-        price:
-          type: number
-          format: double
-          description: Decimal price (e.g. 150.25). Encoded as fixed-point × 10^8 on the wire.
-        quantity:
-          type: number
-          format: double
-          description: Decimal quantity. Encoded as fixed-point × 10^8 on the wire.
-
-    CancelOrderRequest:
-      type: object
-      required: [orderId, accountId, reason]
-      properties:
-        orderId:
-          type: integer
-          format: int64
-        accountId:
-          type: integer
-          format: int64
-        reason:
-          type: string
-          enum: [CLIENT_REQUEST, RISK_BREACH, SYSTEM]
-
-    AmendOrderRequest:
-      type: object
-      required: [orderId, accountId, newPrice, newQuantity]
-      properties:
-        orderId:
-          type: integer
-          format: int64
-        accountId:
-          type: integer
-          format: int64
-        newPrice:
-          type: number
-          format: double
-        newQuantity:
-          type: number
-          format: double
-
     OrderDto:
       type: object
-      description: Snapshot of an order as held in the ViewServerReadModel
+      description: Snapshot of an order as projected by ViewServerReadModel
       properties:
         orderId:
           type: integer
           format: int64
+          example: 1001
         accountId:
           type: integer
           format: int64
+          example: 42
         instrument:
           type: string
           example: "AAPL"
@@ -309,35 +127,35 @@ components:
         price:
           type: number
           format: double
+          description: Fixed-point value ÷ 10^8
+          example: 150.25
         quantity:
           type: number
           format: double
+          example: 100.0
         status:
           type: string
-          enum: [OPEN, PARTIALLY_FILLED, FILLED, CANCELLED, REJECTED]
+          enum: [OPEN, FILLED, PARTIALLY_FILLED, CANCELLED, REJECTED]
         lastFillPrice:
           type: number
           format: double
+          example: 150.25
         lastFillQty:
           type: number
           format: double
+          example: 50.0
         cumulativeFilledQty:
           type: number
           format: double
+          example: 50.0
         remainingQty:
           type: number
           format: double
-
-    CorrelationResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: "accepted"
+          example: 50.0
 
     ErrorResponse:
       type: object
       properties:
         error:
           type: string
-          example: "invalid orderId"
+          example: "not found"
