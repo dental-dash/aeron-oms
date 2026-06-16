@@ -26,3 +26,5 @@
 curl -N -X POST 'http://localhost:8082/api/v1/orders' -H 'accept: text/event-stream' -H 'Content-Type: application/json'   -d '{"symbol":"AAPL","side":"BUY","orderType":"LIMIT","price":185.50,"quantity":100}'
 ```
 
+Swagger URL
+http://localhost:8082/swagger-ui.html

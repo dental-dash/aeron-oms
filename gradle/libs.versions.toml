@@ -8,6 +8,7 @@ dfp         = "1.0.10"
 java        = "21"
 undertow    = "2.3.18.Final"
 jackson     = "2.17.2"
+openapi     = "2.5.0"
 
 [libraries]
 aeron-driver     = { module = "io.aeron:aeron-driver",                   version.ref = "aeron"    }
@@ -22,3 +23,4 @@ undertow-core        = { module = "io.undertow:undertow-core",                  
 jackson-databind     = { module = "com.fasterxml.jackson.core:jackson-databind",   version.ref = "jackson"  }
 artio-core           = { module = "uk.co.real-logic:artio-core",                   version.ref = "artio"    }
 artio-session-codecs = { module = "uk.co.real-logic:artio-session-codecs",         version.ref = "artio"    }
+springdoc-openapi-starter-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui",         version.ref = "openapi"    }

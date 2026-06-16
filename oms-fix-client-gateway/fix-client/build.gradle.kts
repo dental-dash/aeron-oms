@@ -15,6 +15,7 @@ dependencies {
     implementation(libs.aeron.archive)
     implementation(libs.agrona)
     implementation(libs.gflog.api)
+    implementation(libs.springdoc.openapi.starter.webmvc.ui)
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
