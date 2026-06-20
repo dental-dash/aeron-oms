@@ -1,6 +1,9 @@
 package com.oms.app;
 
-import com.oms.aggregate.client.OrderAggregateAgent;
+import com.epam.deltix.gflog.api.Log;
+import com.epam.deltix.gflog.api.LogFactory;
+import com.oms.aggregate.client.OrderService;
+import com.oms.aggregate.client.generated.OrderServiceAgent;
 import com.oms.api.OrderQueryServer;
 import com.oms.common.OmsStreams;
 import com.oms.handlers.FixOrderEventHandler;
@@ -21,7 +24,7 @@ import java.util.List;
 /**
  * OMS POC bootstrap — single-process entry point.
  *
- * <p>Connects to the shared {@link com.oms.driver.OmsMediaDriverMain} at {@code /tmp/aeron-oms}
+ * <p>Connects to the shared {OmsMediaDriverMain} at {@code /tmp/aeron-oms}
  * (must be running before this process starts), wires all Aeron publications and subscriptions,
  * instantiates each component as an {@link org.agrona.concurrent.Agent}, and runs each on its
  * own dedicated {@link AgentRunner} thread.
@@ -30,7 +33,7 @@ import java.util.List;
  * TODO(POC): add secondary Archive node for HA
  */
 public class OmsApp {
-
+    private static final Log log = LogFactory.getLog(OmsApp.class);
     // Shared Aeron dir — must match OmsMediaDriverMain.AERON_DIR
     private static final String AERON_DIR = "/tmp/aeron-oms";
     // Archive control on OmsMediaDriverMain's fixed port
@@ -53,12 +56,24 @@ public class OmsApp {
                         .controlResponseChannel("aeron:udp?endpoint=localhost:0"));
 
         // ── 3. Start recordings BEFORE any publications ───────────────────────
-        // startRecording() is idempotent — safe on every restart.
-        // Archive tracks by channel+streamId; re-calling creates a new recording segment
-        // for each boot (previous boot's recording is preserved for replay).
-        // TODO(POC): validate return subscriptionId > 0
-        archive.startRecording(OmsStreams.IPC, OmsStreams.SEQUENCED_COMMAND_STREAM, SourceLocation.LOCAL);
-        archive.startRecording(OmsStreams.IPC, OmsStreams.SEQUENCED_EVENT_STREAM,   SourceLocation.LOCAL);
+
+        // Check and start Command Stream recording
+        long commandRecordingId = findActiveRecordingId(archive, OmsStreams.SEQUENCED_COMMAND_STREAM);
+        if (commandRecordingId == AeronArchive.NULL_POSITION) {
+            archive.startRecording(OmsStreams.IPC, OmsStreams.SEQUENCED_COMMAND_STREAM, SourceLocation.LOCAL);
+            log.info().append("Started new recording for SEQUENCED_COMMAND_STREAM").commit();
+        } else {
+            log.info().append("Re-using active recording ID ").append(commandRecordingId).append(" for SEQUENCED_COMMAND_STREAM").commit();
+        }
+
+        // Check and start Event Stream recording
+        long eventRecordingId = findActiveRecordingId(archive, OmsStreams.SEQUENCED_EVENT_STREAM);
+        if (eventRecordingId == AeronArchive.NULL_POSITION) {
+            archive.startRecording(OmsStreams.IPC, OmsStreams.SEQUENCED_EVENT_STREAM, SourceLocation.LOCAL);
+            log.info().append("Started new recording for SEQUENCED_EVENT_STREAM").commit();
+        } else {
+            log.info().append("Re-using active recording ID ").append(eventRecordingId).append(" for SEQUENCED_EVENT_STREAM").commit();
+        }
 
         // ── 4. Sequencer channels ─────────────────────────────────────────────
         final Subscription ingressCommandSub = aeron.addSubscription(
@@ -99,8 +114,11 @@ public class OmsApp {
 //        final OrderIngressAgent     ingress    = new OrderIngressAgent(commandIngressPub);
         // Aggregate replays the Event Stream on startup to rebuild in-memory order state.
         // TODO(POC): size term buffer based on max replay duration × msg rate
-        final OrderAggregateAgent   aggregate  = new OrderAggregateAgent(
-                sequencedCommandPub1, ingressEventPub1, sequencedEventSub1, aeron, archive);
+        final OrderServiceAgent orderServiceAgent = new OrderServiceAgent(
+                sequencedCommandPub1, ingressEventPub1, aeron, archive);
+
+        final OrderService orderService = new OrderService(orderServiceAgent);
+        orderServiceAgent.setOrderService(orderService);
         final FixOrderEventHandler fixOrderEventHandler    = new FixOrderEventHandler(sequencedEventSub2, ingressCommandPub1);
         final DatabaseReadModelStub dbModel    = new DatabaseReadModelStub(sequencedEventSub3);
         final ViewServerReadModel   viewModel  = new ViewServerReadModel(
@@ -118,7 +136,7 @@ public class OmsApp {
         final List<AgentRunner> runners = List.of(
                 new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, sequencer),
 //                new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, ingress),
-                new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, aggregate),
+                new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, orderServiceAgent),
                 new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, fixOrderEventHandler),
                 new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, dbModel),
                 new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, viewModel)
@@ -138,5 +156,26 @@ public class OmsApp {
 
         // ── 9. Block main thread ──────────────────────────────────────────────
         Thread.currentThread().join();
+    }
+
+    private static long findActiveRecordingId(AeronArchive archive, int streamId) {
+        final long[] activeRecordingId = {AeronArchive.NULL_POSITION};
+
+        // Query by streamId broadly to bypass exact URI string matching quirks
+        archive.listRecordingsForUri(0, 50, "", streamId,
+                (controlSessionId, correlationId, recordingId, startTimestamp, stopTimestamp,
+                 startPosition, stopPosition, initialTermId, segmentFileLength, termBufferLength,
+                 mtuLength, sessionId, streamIdProp, strippedChannel, originalChannel, sourceIdentity) -> {
+
+                    // If stopPosition is NULL_POSITION (-1), the Archive is actively recording it
+                    if (stopPosition == AeronArchive.NULL_POSITION && streamIdProp == streamId) {
+                        // Ensure it belongs to our IPC channel space
+                        if (originalChannel.contains("aeron:ipc") || strippedChannel.contains("aeron:ipc")) {
+                            activeRecordingId[0] = recordingId;
+                        }
+                    }
+                });
+
+        return activeRecordingId[0];
     }
 }
