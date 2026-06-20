@@ -28,3 +28,16 @@ curl -N -X POST 'http://localhost:8082/api/v1/orders' -H 'accept: text/event-str
 
 Swagger URL (FIX Client)
 http://localhost:8082/swagger-ui.html
+
+## Clean Up Archives
+
+- oms-media-driver
+  - oms-archive
+- oms-fix-client-gateway:fix-acceptor
+  - aeron-fix-acceptor
+  - fix-acceptor-archive
+  - fix-acceptor-logs
+- oms-fix-client-gateway:fix-client
+  - aeron-fix-client
+  - fix-client-archive
+  - fix-client-logs
