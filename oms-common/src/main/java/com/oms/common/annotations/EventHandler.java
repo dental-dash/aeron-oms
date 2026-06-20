@@ -6,13 +6,13 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Indicates that the annotated method serves as an event handler.
- * This annotation can only be applied to methods.
+ * Indicates that the annotated class serves as an Aggregate Root
+ * within the Domain-Driven Design (DDD) structure.
+ * * This annotation can only be applied to Type declarations (Classes, Interfaces, Enums).
  */
-@Target(ElementType.METHOD) // Enforces that this can ONLY be used on methods
-@Retention(RetentionPolicy.RUNTIME) // Makes the annotation available at runtime for reflection
+@Target(ElementType.TYPE) // Enforces that this can ONLY be used on classes/interfaces/enums
+@Retention(RetentionPolicy.RUNTIME) // Allows the annotation to be inspected at runtime via reflection
 public @interface EventHandler {
-    // You can optionally add attributes here, for example:
-    String name() default "";
-    boolean async() default false;
+    // Optional: Add attributes relevant to an aggregate, like a classification type
+    String type() default "Root";
 }

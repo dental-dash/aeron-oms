@@ -12,7 +12,7 @@ import java.lang.annotation.Target;
  */
 @Target(ElementType.TYPE) // Enforces that this can ONLY be used on classes/interfaces/enums
 @Retention(RetentionPolicy.RUNTIME) // Allows the annotation to be inspected at runtime via reflection
-public @interface DomainService {
+public @interface CommandHandler {
     // Optional: Add attributes relevant to an aggregate, like a classification type
     String type() default "Root";
 }

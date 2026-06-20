@@ -3,26 +3,25 @@ package com.oms.aggregate.client;
 import com.epam.deltix.gflog.api.Log;
 import com.epam.deltix.gflog.api.LogFactory;
 import com.oms.common.Decimal64Util;
+import com.oms.common.DomainService;
 import com.oms.common.EventStream;
-import com.oms.common.annotations.DomainService;
-import com.oms.common.annotations.EventHandler;
+import com.oms.common.annotations.CommandHandler;
+import com.oms.common.annotations.Event;
 import com.oms.sbe.*;
 
 import java.util.HashMap;
 import java.util.Map;
 
-@DomainService
-public class OrderService implements OrderCommandApi {
+@CommandHandler
+public class OrderDomainService extends DomainService implements OrderCommandApi {
 
-    private static final Log log = LogFactory.getLog(OrderService.class);
-
-    private final EventStream events;
+    private static final Log log = LogFactory.getLog(OrderDomainService.class);
 
     // In-memory order book — single-threaded, HashMap is fine
     private final Map<Long, OrderState> orders = new HashMap<>();
 
-    public OrderService(EventStream eventPublisher) {
-        this.events = eventPublisher;
+    public OrderDomainService(EventStream eventStream) {
+        super(eventStream);
     }
 
     // ── Command handlers ──────────────────────────────────────────────────────
@@ -181,7 +180,7 @@ public class OrderService implements OrderCommandApi {
 
     // ── Event handlers ──────────────────────────────────────────────────────
 
-    @EventHandler
+    @Event
     public void onNewOrderReceivedEvent(NewOrderReceivedEventDecoder eventDecoder) {
         final long orderId = eventDecoder.orderId();
         final long quantity = Decimal64Util.fromFixedPoint(eventDecoder.orderQty());
@@ -205,7 +204,7 @@ public class OrderService implements OrderCommandApi {
                 .commit();
     }
 
-    @EventHandler
+    @Event
     public void onOrderAcceptedEvent(OrderAcceptedEventDecoder eventDecoder) {
         final long orderId = eventDecoder.orderId();
         final OrderState state = orders.get(eventDecoder.orderId());
@@ -219,7 +218,7 @@ public class OrderService implements OrderCommandApi {
                 .commit();
     }
 
-    @EventHandler
+    @Event
     public void onOrderRejectedEvent(OrderRejectedEventDecoder eventDecoder) {
         log.info()
                 .append("[order-aggregate] [").append(eventDecoder.orderId())
@@ -227,7 +226,7 @@ public class OrderService implements OrderCommandApi {
                 .commit();
     }
 
-    @EventHandler
+    @Event
     public void onCancelRejectedEvent(CancelRejectedEventDecoder eventDecoder) {
         log.info()
                 .append("[aggregate] [").append(eventDecoder.orderId())
@@ -235,7 +234,7 @@ public class OrderService implements OrderCommandApi {
                 .commit();
     }
 
-    @EventHandler
+    @Event
     public void onOrderCancelledEvent(OrderCancelledEventDecoder eventDecoder) {
         final OrderState state = orders.get(eventDecoder.orderId());
         state.status = OrderStatus.CANCELLED;
@@ -245,7 +244,7 @@ public class OrderService implements OrderCommandApi {
                 .commit();
     }
 
-    @EventHandler
+    @Event
     public void onOrderAmendedEvent(OrderAmendedEventDecoder eventDecoder) {
         final OrderState state = orders.get(eventDecoder.orderId());
         state.currentPrice    = eventDecoder.newPrice();

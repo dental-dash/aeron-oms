@@ -2,11 +2,12 @@ package com.oms.app;
 
 import com.epam.deltix.gflog.api.Log;
 import com.epam.deltix.gflog.api.LogFactory;
-import com.oms.aggregate.client.OrderService;
-import com.oms.aggregate.client.generated.OrderServiceAgent;
+import com.oms.aggregate.client.OrderDomainService;
+import com.oms.aggregate.client.generated.OrderDomainServiceAgent;
 import com.oms.api.OrderQueryServer;
 import com.oms.common.OmsStreams;
-import com.oms.handlers.FixOrderEventHandler;
+import com.oms.handlers.FixOrderEventService;
+import com.oms.handlers.generated.FixOrderEventServiceAgent;
 import com.oms.readmodel.db.DatabaseReadModelStub;
 import com.oms.readmodel.view.ViewServerReadModel;
 import com.oms.sequencer.SequencerAgent;
@@ -114,12 +115,16 @@ public class OmsApp {
 //        final OrderIngressAgent     ingress    = new OrderIngressAgent(commandIngressPub);
         // Aggregate replays the Event Stream on startup to rebuild in-memory order state.
         // TODO(POC): size term buffer based on max replay duration × msg rate
-        final OrderServiceAgent orderServiceAgent = new OrderServiceAgent(
+        final OrderDomainServiceAgent orderDomainServiceAgent = new OrderDomainServiceAgent(
                 sequencedCommandPub1, ingressEventPub1, aeron, archive);
 
-        final OrderService orderService = new OrderService(orderServiceAgent);
-        orderServiceAgent.setOrderService(orderService);
-        final FixOrderEventHandler fixOrderEventHandler    = new FixOrderEventHandler(sequencedEventSub2, ingressCommandPub1);
+        final OrderDomainService orderDomainService = new OrderDomainService(orderDomainServiceAgent);
+        orderDomainServiceAgent.setOrderDomainService(orderDomainService);
+
+        final FixOrderEventServiceAgent fixOrderEventServiceAgent = new FixOrderEventServiceAgent(sequencedEventSub2, ingressCommandPub1);
+        final FixOrderEventService fixOrderEventService    = new FixOrderEventService(fixOrderEventServiceAgent);
+        fixOrderEventServiceAgent.setFixOrderEventService(fixOrderEventService);
+
         final DatabaseReadModelStub dbModel    = new DatabaseReadModelStub(sequencedEventSub3);
         final ViewServerReadModel   viewModel  = new ViewServerReadModel(
                 sequencedEventSub4, aeron, archive);
@@ -136,8 +141,8 @@ public class OmsApp {
         final List<AgentRunner> runners = List.of(
                 new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, sequencer),
 //                new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, ingress),
-                new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, orderServiceAgent),
-                new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, fixOrderEventHandler),
+                new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, orderDomainServiceAgent),
+                new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, fixOrderEventServiceAgent),
                 new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, dbModel),
                 new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, viewModel)
         );

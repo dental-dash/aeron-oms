@@ -2,7 +2,7 @@ package com.oms.aggregate.client.generated;
 
 import com.epam.deltix.gflog.api.Log;
 import com.epam.deltix.gflog.api.LogFactory;
-import com.oms.aggregate.client.OrderService;
+import com.oms.aggregate.client.OrderDomainService;
 import com.oms.common.EventStream;
 import com.oms.common.OmsStreams;
 import com.oms.sbe.*;
@@ -19,8 +19,8 @@ import org.agrona.sbe.MessageEncoderFlyweight;
 
 import java.util.function.Supplier;
 
-public class OrderServiceAgent implements EventStream, Agent {
-    private static final Log log = LogFactory.getLog(OrderServiceAgent.class);
+public class OrderDomainServiceAgent implements EventStream, Agent {
+    private static final Log log = LogFactory.getLog(OrderDomainServiceAgent.class);
 
     private static final int  AGGREGATE_REPLAY_STREAM_ID = 20;
     private static final long REPLAY_TIMEOUT_MS          = 10_000L;
@@ -29,8 +29,6 @@ public class OrderServiceAgent implements EventStream, Agent {
     // Pre-allocated encoding state — never allocate inside doWork()
     private final UnsafeBuffer encodingBuffer = new UnsafeBuffer(new byte[512]);
     private final MessageHeaderEncoder headerEncoder    = new MessageHeaderEncoder();
-
-
     private final MessageHeaderDecoder headerDecoder    = new MessageHeaderDecoder();
 
     // Command decoders
@@ -65,14 +63,14 @@ public class OrderServiceAgent implements EventStream, Agent {
     private final Aeron        aeron;
     private final AeronArchive archive;
 
-    private OrderService orderAgent;
+    private OrderDomainService orderService;
 
     // ── Encoder lookup - cache friendly ───────────────────────────────────────
 
     private final Class<?>[] classKeys = new Class<?>[6];
     private final Supplier<?>[] encoderFactories = new Supplier<?>[6];
 
-    public OrderServiceAgent(Subscription commandStreamSub, Publication eventIngressPub, Aeron aeron, AeronArchive archive) {
+    public OrderDomainServiceAgent(Subscription commandStreamSub, Publication eventIngressPub, Aeron aeron, AeronArchive archive) {
         this.commandStreamSub = commandStreamSub;
         this.eventIngressPub = eventIngressPub;
         this.aeron = aeron;
@@ -96,8 +94,8 @@ public class OrderServiceAgent implements EventStream, Agent {
         encoderFactories[index] = factoryMethod;
     }
 
-    public void setOrderService(OrderService orderService) {
-        this.orderAgent = orderService;
+    public void setOrderDomainService(OrderDomainService orderService) {
+        this.orderService = orderService;
     }
 
     @Override
@@ -197,21 +195,23 @@ public class OrderServiceAgent implements EventStream, Agent {
 
     // ── Command stream handler ────────────────────────────────────────────────
 
-    private void onCommandFragment(DirectBuffer buffer, final int offset, final int length, Header header) {
+    private void onCommandFragment(DirectBuffer buffer, final int offset, final int length, final Header header) {
         headerDecoder.wrap(buffer, offset);
         final int templateId = headerDecoder.templateId();
 
         switch (templateId) {
             case NewOrderCommandDecoder.TEMPLATE_ID:
                 cmdDecoder.wrapAndApplyHeader(buffer, offset, headerDecoder);
-                orderAgent.handleNewOrder(cmdDecoder);
+                orderService.handleNewOrder(cmdDecoder);
                 break;
             case CancelOrderCommandDecoder.TEMPLATE_ID:
                 cancelCmdDecoder.wrapAndApplyHeader(buffer, offset, headerDecoder);
-                orderAgent.handleCancelOrder(cancelCmdDecoder);
+                orderService.handleCancelOrder(cancelCmdDecoder);
+                break;
             case AmendOrderCommandDecoder.TEMPLATE_ID:
                 amendCmdDecoder.wrapAndApplyHeader(buffer, offset, headerDecoder);
-                orderAgent.handleAmendOrder(amendCmdDecoder);
+                orderService.handleAmendOrder(amendCmdDecoder);
+                break;
             default:
                 // Handle unmapped template IDs or telemetry
                 break;
@@ -295,7 +295,7 @@ public class OrderServiceAgent implements EventStream, Agent {
     /**
      * Unified event router. Dispatches flyweights straight to the user's POJO.
      */
-    private void dispatchLocalEvent(int templateId, int offset) {
+    public void dispatchLocalEvent(int templateId, int offset) {
         switch (templateId) {
             case NewOrderReceivedEventDecoder.TEMPLATE_ID: // Extracted from @Event(id = 101)
                 dispatchLocalEvent(templateId, this.newOrderReceivedEncoder.buffer(), offset);
@@ -327,36 +327,36 @@ public class OrderServiceAgent implements EventStream, Agent {
         }
     }
 
-    private void dispatchLocalEvent(int templateId, DirectBuffer buffer, int offset) {
+    public void dispatchLocalEvent(int templateId, DirectBuffer buffer, int offset) {
         switch (templateId) {
             case NewOrderReceivedEventDecoder.TEMPLATE_ID: // Extracted from @Event(id = 101)
                 this.newOrderReceivedDecoder.wrapAndApplyHeader(buffer, offset, this.headerDecoder);
-                this.orderAgent.onNewOrderReceivedEvent(this.newOrderReceivedDecoder);
+                this.orderService.onNewOrderReceivedEvent(this.newOrderReceivedDecoder);
                 break;
 
             case OrderAcceptedEventDecoder.TEMPLATE_ID: // Extracted from @Event(id = 101)
                 this.orderAcceptedDecoder.wrapAndApplyHeader(buffer, offset, this.headerDecoder);
-                this.orderAgent.onOrderAcceptedEvent(this.orderAcceptedDecoder);
+                this.orderService.onOrderAcceptedEvent(this.orderAcceptedDecoder);
                 break;
 
             case OrderRejectedEventDecoder.TEMPLATE_ID: // Extracted from @Event(id = 102)
                 this.orderRejectedDecoder.wrapAndApplyHeader(buffer, offset, this.headerDecoder);
-                this.orderAgent.onOrderRejectedEvent(this.orderRejectedDecoder);
+                this.orderService.onOrderRejectedEvent(this.orderRejectedDecoder);
                 break;
 
             case OrderCancelledEventDecoder.TEMPLATE_ID: // Extracted from @Event(id = 103)
                 this.orderCancelledDecoder.wrapAndApplyHeader(buffer, offset, this.headerDecoder);
-                this.orderAgent.onOrderCancelledEvent(this.orderCancelledDecoder);
+                this.orderService.onOrderCancelledEvent(this.orderCancelledDecoder);
                 break;
 
             case OrderAmendedEventDecoder.TEMPLATE_ID: // Extracted from @Event(id = 103)
                 this.orderAmendedDecoder.wrapAndApplyHeader(buffer, offset, this.headerDecoder);
-                this.orderAgent.onOrderAmendedEvent(this.orderAmendedDecoder);
+                this.orderService.onOrderAmendedEvent(this.orderAmendedDecoder);
                 break;
 
             case CancelRejectedEventDecoder.TEMPLATE_ID: // Extracted from @Event(id = 107)
                 this.cancelRejectedDecoder.wrapAndApplyHeader(buffer, offset, this.headerDecoder);
-                this.orderAgent.onCancelRejectedEvent(this.cancelRejectedDecoder);
+                this.orderService.onCancelRejectedEvent(this.cancelRejectedDecoder);
                 break;
 
             default:
