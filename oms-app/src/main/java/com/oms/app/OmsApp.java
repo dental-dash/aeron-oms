@@ -4,12 +4,12 @@ import com.epam.deltix.gflog.api.Log;
 import com.epam.deltix.gflog.api.LogFactory;
 import com.oms.aggregate.client.OrderDomainService;
 import com.oms.aggregate.client.generated.OrderDomainServiceAgent;
-import com.oms.api.OrderQueryServer;
 import com.oms.common.OmsStreams;
-import com.oms.handlers.FixOrderEventService;
-import com.oms.handlers.generated.FixOrderEventServiceAgent;
+import com.oms.handlers.FixOrderEventHandler;
+import com.oms.handlers.generated.FixOrderEventHandlerAgent;
 import com.oms.readmodel.db.DatabaseReadModelStub;
-import com.oms.readmodel.view.ViewServerReadModel;
+import com.oms.readmodel.view.ViewServerEventHandler;
+import com.oms.readmodel.view.generated.ViewServerEventHandlerAgent;
 import com.oms.sequencer.SequencerAgent;
 import io.aeron.Aeron;
 import io.aeron.Publication;
@@ -115,25 +115,29 @@ public class OmsApp {
 //        final OrderIngressAgent     ingress    = new OrderIngressAgent(commandIngressPub);
         // Aggregate replays the Event Stream on startup to rebuild in-memory order state.
         // TODO(POC): size term buffer based on max replay duration × msg rate
+        // OrderDomainService
         final OrderDomainServiceAgent orderDomainServiceAgent = new OrderDomainServiceAgent(
                 sequencedCommandPub1, ingressEventPub1, aeron, archive);
-
         final OrderDomainService orderDomainService = new OrderDomainService(orderDomainServiceAgent);
         orderDomainServiceAgent.setOrderDomainService(orderDomainService);
 
-        final FixOrderEventServiceAgent fixOrderEventServiceAgent = new FixOrderEventServiceAgent(sequencedEventSub2, ingressCommandPub1);
-        final FixOrderEventService fixOrderEventService    = new FixOrderEventService(fixOrderEventServiceAgent);
+        // FixOrderEventHandler
+        final FixOrderEventHandlerAgent fixOrderEventServiceAgent = new FixOrderEventHandlerAgent(sequencedEventSub2, ingressCommandPub1);
+        final FixOrderEventHandler fixOrderEventService    = new FixOrderEventHandler(fixOrderEventServiceAgent);
         fixOrderEventServiceAgent.setFixOrderEventService(fixOrderEventService);
 
+        //
         final DatabaseReadModelStub dbModel    = new DatabaseReadModelStub(sequencedEventSub3);
-        final ViewServerReadModel   viewModel  = new ViewServerReadModel(
-                sequencedEventSub4, aeron, archive);
+
+        // ViewServerEventHandler
+        final ViewServerEventHandlerAgent viewServerEventHandlerAgent = new ViewServerEventHandlerAgent(sequencedEventSub4, aeron, archive);
+        final ViewServerEventHandler viewServerEventHandler = new ViewServerEventHandler(viewServerEventHandlerAgent);
+        viewServerEventHandlerAgent.setViewServerEventHandler(viewServerEventHandler);
+
+//        final ViewServerReadModel   viewModel  = new ViewServerReadModel(
+//                sequencedEventSub4, aeron, archive);
 
         // ── M5: Query server (port 8081) ──────────────────────────────────────
-        // Listener registered BEFORE startOnThread() — no updates can be missed.
-        final OrderQueryServer queryServer = new OrderQueryServer();
-        viewModel.setListener(queryServer);
-        queryServer.start(viewModel);
 
         // ── 7. AgentRunner threads ────────────────────────────────────────────
         // YieldingIdleStrategy: backs off with Thread.yield() when idle. Good balance of
@@ -144,7 +148,7 @@ public class OmsApp {
                 new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, orderDomainServiceAgent),
                 new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, fixOrderEventServiceAgent),
                 new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, dbModel),
-                new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, viewModel)
+                new AgentRunner(new YieldingIdleStrategy(), Throwable::printStackTrace, null, viewServerEventHandlerAgent)
         );
 
         runners.forEach(AgentRunner::startOnThread);
@@ -154,7 +158,6 @@ public class OmsApp {
         // then archive, then aeron. Driver is managed by OmsMediaDriverMain.
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             runners.forEach(r -> CloseHelper.quietClose(r));  // onClose() writes checkpoint
-            queryServer.stop();   // M5: stop Undertow after agent threads are down
             CloseHelper.quietClose(archive);
             CloseHelper.quietClose(aeron);
         }, "oms-shutdown"));

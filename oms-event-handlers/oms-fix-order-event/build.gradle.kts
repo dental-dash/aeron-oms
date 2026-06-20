@@ -1,6 +1,6 @@
 dependencies {
     implementation(project(":oms-common"))
     implementation(project(":oms-sbe:oms-schema"))
-    implementation(libs.aeron.driver)
+    implementation(project(":oms-sbe:fix-schema"))
     implementation(libs.aeron.client)
 }

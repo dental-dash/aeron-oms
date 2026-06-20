@@ -14,12 +14,12 @@
 
 > Terminal 3 - FIX Gateway
 > ```bash
-> ./gradlew :oms-fix-client-gateway:fix-acceptor:run
+> ./gradlew :oms-fix-acceptor:fix-acceptor:run
 >```
 
 > Terminal 4 - FIX Client
 > ```bash
-> ./gradlew :oms-fix-client-gateway:fix-client:bootRun
+> ./gradlew :oms-fix-client:bootRun
 >```
 
 ```bash
