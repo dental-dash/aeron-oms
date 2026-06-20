@@ -3,6 +3,7 @@ package com.oms.aggregate.client;
 import com.epam.deltix.gflog.api.Log;
 import com.epam.deltix.gflog.api.LogFactory;
 import com.oms.common.Decimal64Util;
+import com.oms.common.EventStream;
 import com.oms.common.annotations.DomainService;
 import com.oms.common.annotations.EventHandler;
 import com.oms.sbe.*;
@@ -15,13 +16,13 @@ public class OrderService implements OrderCommandApi {
 
     private static final Log log = LogFactory.getLog(OrderService.class);
 
-    private final OrderEventApi eventApi;
+    private final EventStream events;
 
     // In-memory order book — single-threaded, HashMap is fine
     private final Map<Long, OrderState> orders = new HashMap<>();
 
-    public OrderService(OrderEventApi eventApi) {
-        this.eventApi = eventApi;
+    public OrderService(EventStream eventPublisher) {
+        this.events = eventPublisher;
     }
 
     // ── Command handlers ──────────────────────────────────────────────────────
@@ -37,7 +38,7 @@ public class OrderService implements OrderCommandApi {
         final OrdTypeEnum orderType = newOrder.ordType();
         final TimeInForceEnum tif     = newOrder.timeInForce();
 
-        eventApi.newOrderReceivedEncoder()
+        var newOrderEvent = events.encoderOf(NewOrderReceivedEventEncoder.class)
                 .correlationId(correlationId)
                 .orderId(orderId)
                 .accountId(accountId)
@@ -45,8 +46,8 @@ public class OrderService implements OrderCommandApi {
                 .side(side)
                 .ordType(orderType)
                 .timeInForce(tif);
-        eventApi.newOrderReceivedEncoder().price().mantissa(newOrder.price().mantissa()).exponent(newOrder.price().exponent());
-        eventApi.newOrderReceivedEncoder().orderQty().mantissa(newOrder.orderQty().mantissa()).exponent(newOrder.orderQty().exponent());
+        newOrderEvent.price().mantissa(newOrder.price().mantissa()).exponent(newOrder.price().exponent());
+        newOrderEvent.orderQty().mantissa(newOrder.orderQty().mantissa()).exponent(newOrder.orderQty().exponent());
 
         // Validation — reject path
         RejectReasonEnum rejectReason = null;
@@ -61,20 +62,18 @@ public class OrderService implements OrderCommandApi {
         }
 
         if (rejectReason != null) {
-            eventApi.publish(eventApi.newOrderReceivedEncoder());
-
-            eventApi.orderRejectedEncoder()
+            var orderRejectedEvent = events.encoderOf(OrderRejectedEventEncoder.class)
                     .correlationId(0L)
                     .orderId(orderId)
                     .accountId(0L)
                     .rejectReason(rejectReason);
-            eventApi.publish(eventApi.orderRejectedEncoder());
+            events.publish(orderRejectedEvent);
             return;
         }
 
-        eventApi.publish(eventApi.newOrderReceivedEncoder());
+        events.publish(newOrderEvent);
 
-        eventApi.orderAcceptedEncoder()
+        var orderAcceptedEvent = events.encoderOf(OrderAcceptedEventEncoder.class)
                 .correlationId(correlationId)
                 .orderId(orderId)
                 .accountId(accountId)
@@ -82,10 +81,10 @@ public class OrderService implements OrderCommandApi {
                 .side(side)
                 .orderType(orderType)
                 .timeInForce(tif);
-        eventApi.orderAcceptedEncoder().price().mantissa(newOrder.price().mantissa()).exponent(newOrder.price().exponent());
-        eventApi.orderAcceptedEncoder().quantity().mantissa(newOrder.orderQty().mantissa()).exponent(newOrder.orderQty().exponent());
+        orderAcceptedEvent.price().mantissa(newOrder.price().mantissa()).exponent(newOrder.price().exponent());
+        orderAcceptedEvent.quantity().mantissa(newOrder.orderQty().mantissa()).exponent(newOrder.orderQty().exponent());
 
-        eventApi.publish(eventApi.orderAcceptedEncoder());
+        events.publish(orderAcceptedEvent);
     }
 
     @Override
@@ -109,23 +108,23 @@ public class OrderService implements OrderCommandApi {
                 || state.status == OrderStatus.REJECTED) {
             // TODO(POC): add ORDER_ALREADY_FILLED / ORDER_ALREADY_CANCELLED reason to RejectReason schema
 
-            eventApi.cancelRejectedEncoder()
+            var cancelRejectEvent = events.encoderOf(CancelRejectedEventEncoder.class)
                     .correlationId(correlationId)
                     .orderId(orderId)
                     .rejectReason(RejectReasonEnum.RISK_BREACH);
 
-            eventApi.publish(eventApi.cancelRejectedEncoder());
+            events.publish(cancelRejectEvent);
             return;
         }
 
         // OPEN or PARTIALLY_FILLED — allow cancel
-        eventApi.orderCancelledEncoder()
+        var orderCancelledEvent = events.encoderOf(OrderCancelledEventEncoder.class)
                 .correlationId(correlationId)
                 .orderId(orderId)
                 .accountId(accountId)
                 .cancelReason(reason);
 
-        eventApi.publish(eventApi.orderCancelledEncoder());
+        events.publish(orderCancelledEvent);
     }
 
     @Override
@@ -170,14 +169,14 @@ public class OrderService implements OrderCommandApi {
             return;
         }
 
-        eventApi.orderAmendedEncoder()
+        var orderAmendedEvent = events.encoderOf(OrderAmendedEventEncoder.class)
                 .correlationId(correlationId)
                 .orderId(orderId)
                 .accountId(accountId)
                 .newPrice(newPrice)
                 .newQuantity(newQuantity);
 
-        eventApi.publish(eventApi.orderAmendedEncoder());
+        events.publish(orderAmendedEvent);
     }
 
     // ── Event handlers ──────────────────────────────────────────────────────

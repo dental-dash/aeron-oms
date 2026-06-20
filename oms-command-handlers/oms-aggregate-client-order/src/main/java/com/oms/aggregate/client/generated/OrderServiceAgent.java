@@ -2,8 +2,8 @@ package com.oms.aggregate.client.generated;
 
 import com.epam.deltix.gflog.api.Log;
 import com.epam.deltix.gflog.api.LogFactory;
-import com.oms.aggregate.client.OrderEventApi;
 import com.oms.aggregate.client.OrderService;
+import com.oms.common.EventStream;
 import com.oms.common.OmsStreams;
 import com.oms.sbe.*;
 import io.aeron.Aeron;
@@ -17,7 +17,9 @@ import org.agrona.concurrent.Agent;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.sbe.MessageEncoderFlyweight;
 
-public class OrderServiceAgent implements OrderEventApi, Agent {
+import java.util.function.Supplier;
+
+public class OrderServiceAgent implements EventStream, Agent {
     private static final Log log = LogFactory.getLog(OrderServiceAgent.class);
 
     private static final int  AGGREGATE_REPLAY_STREAM_ID = 20;
@@ -65,11 +67,33 @@ public class OrderServiceAgent implements OrderEventApi, Agent {
 
     private OrderService orderAgent;
 
+    // ── Encoder lookup - cache friendly ───────────────────────────────────────
+
+    private final Class<?>[] classKeys = new Class<?>[6];
+    private final Supplier<?>[] encoderFactories = new Supplier<?>[6];
+
     public OrderServiceAgent(Subscription commandStreamSub, Publication eventIngressPub, Aeron aeron, AeronArchive archive) {
         this.commandStreamSub = commandStreamSub;
         this.eventIngressPub = eventIngressPub;
         this.aeron = aeron;
         this.archive = archive;
+        registerEncoders();
+    }
+
+    private void registerEncoders() {
+        registerEncoder(0, NewOrderReceivedEventEncoder.class, this::newOrderReceivedEncoder);
+        registerEncoder(1, OrderAcceptedEventEncoder.class, this::orderAcceptedEncoder);
+        registerEncoder(2, OrderRejectedEventEncoder.class,  this::orderRejectedEncoder);
+        registerEncoder(3, OrderAmendedEventEncoder.class, this::orderAmendedEncoder);
+        registerEncoder(4, CancelRejectedEventEncoder.class, this::cancelRejectedEncoder);
+        registerEncoder(5, OrderCancelledEventEncoder.class, this::orderCancelledEncoder);
+    }
+
+    // Called dynamically by your annotation processor at startup
+    private <T extends MessageEncoderFlyweight> void registerEncoder(int index, Class<T> clazz, Supplier<T> factoryMethod) {
+        if (index >= classKeys.length) throw new IllegalStateException("Registry full");
+        classKeys[index] = clazz;
+        encoderFactories[index] = factoryMethod;
     }
 
     public void setOrderService(OrderService orderService) {
@@ -196,52 +220,59 @@ public class OrderServiceAgent implements OrderEventApi, Agent {
 
     // ── Event encoders ────────────────────────────────────────────────
 
-    @Override
-    public NewOrderReceivedEventEncoder newOrderReceivedEncoder() {
+    private NewOrderReceivedEventEncoder newOrderReceivedEncoder() {
         newOrderReceivedEncoder.wrapAndApplyHeader(encodingBuffer, 0, headerEncoder)
                 .sequenceNumber(0)   // Sequencer overwrites this
                 .timestamp(System.nanoTime());
         return newOrderReceivedEncoder;
     }
 
-    @Override
-    public OrderRejectedEventEncoder orderRejectedEncoder() {
+    private OrderRejectedEventEncoder orderRejectedEncoder() {
         orderRejectedEncoder.wrapAndApplyHeader(encodingBuffer, 0, headerEncoder)
                 .sequenceNumber(0)   // Sequencer overwrites this
                 .timestamp(System.nanoTime());
         return orderRejectedEncoder;
     }
 
-    @Override
-    public OrderAcceptedEventEncoder orderAcceptedEncoder() {
+    private OrderAcceptedEventEncoder orderAcceptedEncoder() {
         orderAcceptedEncoder.wrapAndApplyHeader(encodingBuffer, 0, headerEncoder)
                 .sequenceNumber(0)   // Sequencer overwrites this
                 .timestamp(System.nanoTime());
         return orderAcceptedEncoder;
     }
 
-    @Override
-    public CancelRejectedEventEncoder cancelRejectedEncoder() {
+    private CancelRejectedEventEncoder cancelRejectedEncoder() {
         cancelRejectedEncoder.wrapAndApplyHeader(encodingBuffer, 0, headerEncoder)
                 .sequenceNumber(0)   // Sequencer overwrites this
                 .timestamp(System.nanoTime());
         return cancelRejectedEncoder;
     }
 
-    @Override
-    public OrderCancelledEventEncoder orderCancelledEncoder() {
+    private OrderCancelledEventEncoder orderCancelledEncoder() {
         orderCancelledEncoder.wrapAndApplyHeader(encodingBuffer, 0, headerEncoder)
                 .sequenceNumber(0)   // Sequencer overwrites this
                 .timestamp(System.nanoTime());
         return orderCancelledEncoder;
     }
 
-    @Override
-    public OrderAmendedEventEncoder orderAmendedEncoder() {
+    private OrderAmendedEventEncoder orderAmendedEncoder() {
         orderAmendedEncoder.wrapAndApplyHeader(encodingBuffer, 0, headerEncoder)
                 .sequenceNumber(0)   // Sequencer overwrites this
                 .timestamp(System.nanoTime());
         return orderAmendedEncoder;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T extends MessageEncoderFlyweight> T encoderOf(Class<T> encoderClass) {
+        // Linear scan of an L1 cache line. Pointer comparison (==) is blazing fast.
+        for (int i = 0; i < encoderFactories.length; i++) {
+            if (classKeys[i] == encoderClass) {
+                // The cast here is safe, and the compiler enforces safety at the call site!
+                return (T) encoderFactories[i].get();
+            }
+        }
+        return null;
     }
 
     @Override
